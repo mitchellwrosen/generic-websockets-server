@@ -1,0 +1,11 @@
+name: generic-websockets-server
+version: 0
+build-type: Simple
+cabal-version: >= 1.2
+
+executable generic-websockets-server
+  main-is: Main.hs
+  ghc-options: -Wall
+  build-depends:
+      base
+    , websockets
