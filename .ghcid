@@ -1,1 +1,1 @@
--c "cabal new-repl -O0" --restart generic-websocket-server.cabal
+-c "cabal new-repl -O0" --restart generic-websockets-server.cabal
