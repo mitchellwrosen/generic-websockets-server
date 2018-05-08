@@ -1,19 +1,20 @@
+cabal-version: 2.0
+
 name: generic-websockets-server
 version: 0
 build-type: Simple
-cabal-version: >= 1.2
 
 executable generic-websockets-server
   main-is: Main.hs
   ghc-options: -Wall
   build-depends:
-      async
-    , base
-    , http-types
-    , network
-    , stm
-    , text
-    , wai
-    , wai-websockets
-    , warp
-    , websockets
+      async ^>= 2.2
+    , base ^>= 4.10
+    , http-types ^>= 0.12
+    , network ^>= 2.6
+    , stm ^>= 2.4
+    , text ^>= 1.2
+    , wai ^>= 3.2
+    , wai-websockets ^>= 3.0
+    , warp ^>= 3.2
+    , websockets ^>= 0.12
