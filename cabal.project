@@ -1,2 +1,15 @@
-packages: .
+packages: ., deps/mitchell-stdlib
+
 with-compiler: ghc-8.2.2
+
+package mitchell-stdlib
+  flags:
+    +async
+    +bytestring
+    +network
+    +stm
+    +text
+    +unordered-containers
+
+allow-newer:
+  websockets:network

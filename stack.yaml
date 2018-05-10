@@ -1,0 +1,15 @@
+resolver: lts-11.8
+
+extra-deps:
+  - deps/mitchell-stdlib
+
+flags:
+  mitchell-stdlib:
+    async: true
+    bytestring: true
+    network: true
+    stm: true
+    text: true
+    unordered-containers: true
+
+allow-newer: true
