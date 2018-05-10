@@ -5,6 +5,7 @@ extra-deps:
 
 flags:
   mitchell-stdlib:
+    aeson: true
     async: true
     bytestring: true
     network: true

@@ -5,11 +5,12 @@
 {-# language ViewPatterns          #-}
 
 import Concurrency (atomically, race_)
-import Data.Aeson
 import Environment (getArgs)
 import Exit (exitFailure)
 import File (stderr)
 import File.Text (hPutStrLn)
+import Json.Decode
+import Json.Encode (Value, encode)
 import IORef (modifyIORef', newIORef, readIORef)
 import MonadFail (fail)
 import Network.HTTP.Types (status400, status500)

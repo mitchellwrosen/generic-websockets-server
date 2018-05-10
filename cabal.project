@@ -4,6 +4,7 @@ with-compiler: ghc-8.2.2
 
 package mitchell-stdlib
   flags:
+    +aeson
     +async
     +bytestring
     +network
