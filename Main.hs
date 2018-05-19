@@ -10,7 +10,7 @@ import Exit (exitFailure)
 import File (stderr)
 import File.Text (hPutStrLn)
 import Json.Decode
-import Json.Encode (Value, encode)
+import Json.Encode (ToJSON(..), Value, encode, object)
 import IORef (modifyIORef', newIORef, readIORef)
 import MonadFail (fail)
 import Network.HTTP.Types (status400, status500)
@@ -48,14 +48,18 @@ instance FromJSON Message where
         s ->
           fail ("Unexpected message type: " <> s)
 
-data SubscribeMessage = SubscribeMessage
-  { subscribeMsgTopic :: !Text
-  }
+data SubscribeMessage
+  = SubscribeMessage !Text
 
-data PayloadMessage = PayloadMessage
-  { payloadMsgTopic :: !Text
-  , payloadMsgPayload :: !Value
-  }
+data PayloadMessage
+  = PayloadMessage !Text !Value
+
+instance ToJSON PayloadMessage where
+  toJSON (PayloadMessage topic payload) =
+    object
+      [ ("topic", toJSON topic)
+      , ("payload", payload)
+      ]
 
 data MalformedMessage
   = MalformedMessage !SockAddr !ByteString
@@ -110,7 +114,7 @@ wsApp chan request pconn = do
   let recvThread :: IO ()
       recvThread =
         forever $ do
-          (sender, PayloadMessage topic payload) :: (SockAddr, PayloadMessage) <-
+          (sender, message@(PayloadMessage topic _)) :: (SockAddr, PayloadMessage) <-
             atomically (readTChan chan')
 
           subscribed :: HashSet Text <-
@@ -118,7 +122,7 @@ wsApp chan request pconn = do
 
           when (sender /= remoteHost request &&
                   topic `elem` subscribed)
-            (sendTextData conn (encode payload))
+            (sendTextData conn (encode message))
 
   let sendThread :: IO ()
       sendThread =
