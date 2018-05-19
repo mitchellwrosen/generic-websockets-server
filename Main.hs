@@ -111,10 +111,13 @@ wsApp chan request pconn = do
   subscribedRef :: IORef (HashSet Text) <-
     newIORef mempty
 
-  let recvThread :: IO ()
-      recvThread =
+  -- Send thread: send messages to the connected client that
+  --   * Are of a topic the client has subscribed to
+  --   * Are not from the client itself
+  let sendThread :: IO ()
+      sendThread =
         forever $ do
-          (sender, message@(PayloadMessage topic _)) :: (SockAddr, PayloadMessage) <-
+          (sender :: SockAddr, message@(PayloadMessage topic _) :: PayloadMessage) <-
             atomically (readTChan chan')
 
           subscribed :: HashSet Text <-
@@ -124,8 +127,10 @@ wsApp chan request pconn = do
                   topic `elem` subscribed)
             (sendTextData conn (encode message))
 
-  let sendThread :: IO ()
-      sendThread =
+  -- Receive thread: handle subscribe messages and payload messages coming from
+  -- the client.
+  let recvThread :: IO ()
+      recvThread =
         forever $ do
           bytes :: ByteString <-
             receiveData conn
@@ -140,4 +145,4 @@ wsApp chan request pconn = do
                   atomically
                     (writeTChan chan (remoteHost request, message'))
 
-  race_ recvThread sendThread
+  race_ sendThread recvThread
