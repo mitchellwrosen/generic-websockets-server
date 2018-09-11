@@ -41,11 +41,11 @@ instance FromJSON Message where
       (o .: "type") >>= \case
         "subscribe" ->
           Subscribe
-            <$> o .: "topic"
+            <$> o .: "topics"
 
         "unsubscribe" ->
           Unsubscribe
-            <$> o .: "topic"
+            <$> o .: "topics"
 
         "publish" ->
           Publish

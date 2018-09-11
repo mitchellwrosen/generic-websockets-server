@@ -1,0 +1,6 @@
+#!/bin/sh
+
+set -e
+
+rm -f cabal.project.freeze
+cabal new-freeze
