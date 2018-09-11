@@ -29,8 +29,8 @@ import qualified HashSet
 
 
 data Message
-  = Subscribe !Text
-  | Unsubscribe !Text
+  = Subscribe !(HashSet Text)
+  | Unsubscribe !(HashSet Text)
   | Publish !Text !Value
 
 
@@ -137,11 +137,11 @@ wsApp chan request pconn = do
 
           Just message ->
             case message of
-              Subscribe topic ->
-                modifyIORef' subscribedRef (HashSet.insert topic)
+              Subscribe topics ->
+                modifyIORef' subscribedRef (HashSet.union topics)
 
-              Unsubscribe topic ->
-                modifyIORef' subscribedRef (HashSet.delete topic)
+              Unsubscribe topics ->
+                modifyIORef' subscribedRef (`HashSet.difference` topics)
 
               Publish topic message' ->
                 atomically
