@@ -1,78 +1,73 @@
-{-# language DuplicateRecordFields #-}
-{-# language LambdaCase            #-}
-{-# language OverloadedStrings     #-}
-{-# language ScopedTypeVariables   #-}
-{-# language ViewPatterns          #-}
+{-# LANGUAGE DeriveAnyClass, DerivingStrategies, DuplicateRecordFields,
+             InstanceSigs, LambdaCase, OverloadedStrings, ScopedTypeVariables,
+             ViewPatterns #-}
 
-import Concurrency (atomically, race_)
-import Environment (getArgs)
-import Exit (exitFailure)
-import File (stderr)
-import File.Text (hPutStrLn)
+import Concurrency                    (atomically, race_)
+import Environment                    (getArgs)
+import Exit                           (exitFailure)
+import File                           (stderr)
+import File.Text                      (hPutStrLn)
+import IORef                          (modifyIORef', newIORef, readIORef)
 import Json.Decode
-import Json.Encode (ToJSON(..), Value, encode, object)
-import IORef (modifyIORef', newIORef, readIORef)
-import MonadFail (fail)
-import Network.HTTP.Types (status400, status500)
-import Network.Wai (Request, remoteHost, responseLBS, responseRaw)
-import Network.Wai.Handler.Warp (run)
-import Network.Wai.Handler.WebSockets
-  (getRequestHead, isWebSocketsReq, runWebSockets)
-import Network.WebSockets
-  (Connection, PendingConnection, acceptRequest, defaultConnectionOptions,
-    receiveData, sendTextData)
-import Read (readMaybe)
-import Socket (SockAddr)
-import String (String)
+import Json.Encode                    (ToJSON(..), Value, encode, object)
+import MonadFail                      (fail)
+import Network.HTTP.Types             (status400, status500)
+import Network.Wai                    (Request, remoteHost, responseLBS,
+                                       responseRaw)
+import Network.Wai.Handler.Warp       (run)
+import Network.Wai.Handler.WebSockets (getRequestHead, isWebSocketsReq,
+                                       runWebSockets)
+import Network.WebSockets             (Connection, PendingConnection,
+                                       acceptRequest, defaultConnectionOptions,
+                                       receiveData, sendTextData)
+import Read                           (readMaybe)
+import Socket                         (SockAddr)
+import String                         (String)
 import TChan
 
 import qualified HashSet
 
+
 data Message
-  = SubscribeMsg SubscribeMessage
-  | PayloadMsg PayloadMessage
+  = Subscribe !Text
+  | Unsubscribe !Text
+  | Publish !Text !Value
+
 
 instance FromJSON Message where
+  parseJSON :: Value -> Parser Message
   parseJSON =
     withObject "message" $ \o ->
       (o .: "type") >>= \case
         "subscribe" ->
-          SubscribeMsg
-            <$> (SubscribeMessage
-                  <$> o .: "topic")
-        "message" ->
-          PayloadMsg
-            <$> (PayloadMessage
-                  <$> o .: "topic"
-                  <*> o .: "payload")
+          Subscribe
+            <$> o .: "topic"
+
+        "unsubscribe" ->
+          Unsubscribe
+            <$> o .: "topic"
+
+        "publish" ->
+          Publish
+            <$> o .: "topic"
+            <*> o .: "message"
+
         s ->
           fail ("Unexpected message type: " <> s)
 
-data SubscribeMessage
-  = SubscribeMessage !Text
-
-data PayloadMessage
-  = PayloadMessage !Text !Value
-
-instance ToJSON PayloadMessage where
-  toJSON (PayloadMessage topic payload) =
-    object
-      [ ("topic", toJSON topic)
-      , ("payload", payload)
-      ]
 
 data MalformedMessage
   = MalformedMessage !SockAddr !ByteString
-  deriving (Show)
+  deriving stock (Show)
+  deriving anyclass (Exception)
 
-instance Exception MalformedMessage
 
 main :: IO ()
 main = do
   port :: Int <-
     parseArgs =<< getArgs
 
-  chan :: TChan (SockAddr, PayloadMessage) <-
+  chan :: TChan (SockAddr, Text, Value) <-
     newBroadcastTChanIO
 
   run port $ \req resp ->
@@ -97,7 +92,7 @@ main = do
       exitFailure
 
 wsApp
-  :: TChan (SockAddr, PayloadMessage)
+  :: TChan (SockAddr, Text, Value)
   -> Request
   -> PendingConnection
   -> IO ()
@@ -105,7 +100,7 @@ wsApp chan request pconn = do
   conn :: Connection <-
     acceptRequest pconn
 
-  chan' :: TChan (SockAddr, PayloadMessage) <-
+  chan' :: TChan (SockAddr, Text, Value) <-
     atomically (dupTChan chan)
 
   subscribedRef :: IORef (HashSet Text) <-
@@ -114,35 +109,42 @@ wsApp chan request pconn = do
   -- Send thread: send messages to the connected client that
   --   * Are of a topic the client has subscribed to
   --   * Are not from the client itself
-  let sendThread :: IO ()
-      sendThread =
-        forever $ do
-          (sender :: SockAddr, message@(PayloadMessage topic _) :: PayloadMessage) <-
-            atomically (readTChan chan')
+  let send :: IO ()
+      send = do
+        (sender, topic, message) <-
+          atomically (readTChan chan')
 
-          subscribed :: HashSet Text <-
-            readIORef subscribedRef
+        subscribed :: HashSet Text <-
+          readIORef subscribedRef
 
-          when (sender /= remoteHost request &&
-                  topic `elem` subscribed)
-            (sendTextData conn (encode message))
+        when (sender /= remoteHost request && topic `elem` subscribed) $
+          (sendTextData conn . encode)
+            (object
+              [ ("topic", toJSON topic)
+              , ("message", message)
+              ])
 
   -- Receive thread: handle subscribe messages and payload messages coming from
   -- the client.
-  let recvThread :: IO ()
-      recvThread =
-        forever $ do
-          bytes :: ByteString <-
-            receiveData conn
-          case decodeStrict' bytes of
-            Nothing ->
-              throwIO (MalformedMessage (remoteHost request) bytes)
-            Just message ->
-              case message of
-                SubscribeMsg (SubscribeMessage s) ->
-                  modifyIORef' subscribedRef (HashSet.insert s)
-                PayloadMsg message' ->
-                  atomically
-                    (writeTChan chan (remoteHost request, message'))
+  let recv :: IO ()
+      recv = do
+        bytes :: ByteString <-
+          receiveData conn
 
-  race_ sendThread recvThread
+        case decodeStrict' bytes of
+          Nothing ->
+            throwIO (MalformedMessage (remoteHost request) bytes)
+
+          Just message ->
+            case message of
+              Subscribe topic ->
+                modifyIORef' subscribedRef (HashSet.insert topic)
+
+              Unsubscribe topic ->
+                modifyIORef' subscribedRef (HashSet.delete topic)
+
+              Publish topic message' ->
+                atomically
+                  (writeTChan chan (remoteHost request, topic, message'))
+
+  race_ (forever send) (forever recv)

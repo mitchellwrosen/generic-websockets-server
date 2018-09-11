@@ -6,7 +6,7 @@ build-type: Simple
 
 executable generic-websockets-server
   main-is: Main.hs
-  ghc-options: -Wall
+  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       http-types ^>= 0.12
     , mitchell-stdlib
